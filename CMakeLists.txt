@@ -49,7 +49,9 @@ include_directories( include
 )
 
 add_library( graphopt
-             src/GraphOptimizer.cpp
+			 src/GraphOptimizer.cpp
+			 src/sclam_fiducial.cpp
+             src/slamse3.cpp
 )
 add_dependencies( graphopt isam_external 
                            ${catkin_EXPORTED_TARGETS} )
@@ -59,6 +61,20 @@ target_link_libraries( graphopt
                        ${catkin_LIBRARIES}
 )
 
+add_executable( isam_test tests/IsamTest.cpp )
+target_link_libraries( isam_test
+                       ${isam_LIBRARIES}
+                       ${catkin_LIBRARIES}
+                       manycal
+)
+
+add_executable( odometry_test tests/OdometryTest.cpp )
+target_link_libraries( odometry_test
+                      ${isam_LIBRARIES}
+                      ${catkin_LIBRARIES}
+                      manycal
+)
+
 # Mark executables and/or libraries for installation
 install(TARGETS graphopt
 	ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
@@ -66,9 +82,12 @@ install(TARGETS graphopt
 	RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
-install(DIRECTORY include/${PROJECT_NAME}/
-	DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
-	FILES_MATCHING PATTERN "*.h"
+file(GLOB graphopt_HEADERS
+"include/${PROJECT_NAME}/*.h"
+"include/${PROJECT_NAME}/*.hpp"
+)
+install(FILES ${graphopt_HEADERS}
+   DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
 )
 
 install(DIRECTORY include/isam/
