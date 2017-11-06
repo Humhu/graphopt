@@ -3,6 +3,7 @@
 #include <ros/time.h>
 #include <memory>
 #include "isam/Slam.h"
+#include "graphopt/GraphOptimizer.h"
 
 namespace argus
 {
@@ -85,7 +86,8 @@ public:
 	typedef isam::Noise NoiseType;
 	typedef std::shared_ptr<PoseGraph> Ptr;
 
-	PoseGraph() {}
+	PoseGraph( GraphOptimizer& graph ) 
+	: _graph( graph ) {}
 
 	virtual ~PoseGraph() {}
 
@@ -99,7 +101,8 @@ public:
 	 * If not and the node will be optimized, a prior should be added. */
 	virtual bool IsGrounded( const IndexType& ind ) const = 0;
 
-	/*! \brief Creates a node at the specified index. */
+	/*! \brief Retrieves the node corresponding to the specified index if it exists,
+	else creates a node at the specified index. */
 	virtual typename NodeType::Ptr CreateNode( const IndexType& ind, 
 	                                           const PoseType& pose ) = 0;
 
@@ -118,7 +121,11 @@ public:
 	                          const NoiseType& noise ) = 0;
 
 	virtual void CreateEdge( const IndexType& from, const IndexType& to,
-	                         const PoseType& pose, const NoiseType& noise ) = 0;
+							 const PoseType& pose, const NoiseType& noise ) = 0;
+							 
+protected:
+
+	GraphOptimizer& _graph;
 
 };
 

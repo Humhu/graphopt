@@ -25,41 +25,48 @@ public:
 	typedef typename PoseGraph<P,IndexType>::NoiseType NoiseType;
 	typedef std::shared_ptr<OdometryGraph> Ptr;
 	
-	OdometryGraph( isam::Slam::Ptr s ) 
-	: slam( s ) {}
+	OdometryGraph( GraphOptimizer& s )
+	: PoseGraph<P,IndexType>( s ), _numPriors( 0 ) {}
 	
 	virtual IndexType EarliestIndex() const
 	{
-		return argus::get_lowest_key( timeSeries );
+		return argus::get_lowest_key( _timeSeries );
 	}
 
 	virtual IndexType LatestIndex() const
 	{
-		return argus::get_highest_key( timeSeries );
+		return argus::get_highest_key( _timeSeries );
 	}
 
+	// An odometry graph is grounded so long as it has at least one prior
 	virtual bool IsGrounded( const IndexType& ind ) const
 	{
-		// Case where there is 1 or 0 nodes
-		if( timeSeries.size() < 2 ) 
-		{
-			if( timeSeries.count( ind ) == 0 ) { return false; }
-			return timeSeries.at( ind ).priors.size() > 0;
-		}
+		return _numPriors > 0;
+	}
 
+	bool InRange( const IndexType& ind ) const
+	{
+		if( _timeSeries.size() == 0 ) { return false; }
 		return ind >= EarliestIndex() && ind <= LatestIndex();
 	}
 
 	virtual typename NodeType::Ptr CreateNode( const IndexType& ind, 
 	                                           const PoseType& pose )
 	{
+		typename NodeType::Ptr node = RetrieveNode( ind );
+		if( node ) 
+		{ 
+			node->init( pose );
+			return node; 
+		}
+
 		Datum datum;
 		datum.node = std::make_shared <NodeType>();
 		datum.node->init( pose );
 		datum.toPrev = nullptr;
 		
-		timeSeries[ ind ] = datum;
-		slam->add_node( datum.node.get() );
+		_timeSeries[ ind ] = datum;
+		PoseGraph<P,IndexType>::_graph.AddNode( datum.node );
 		return datum.node;
 	}
 
@@ -67,7 +74,7 @@ public:
 	 * if it is between the first and last index otherwise. Returns the node. */
 	typename NodeType::Ptr RetrieveNode( const IndexType& ind )
 	{
-		if( timeSeries.count( ind ) > 0 ) { return timeSeries[ind].node; }
+		if( _timeSeries.count( ind ) > 0 ) { return _timeSeries[ind].node; }
 		return SplitOdometry( ind );
 	}
 
@@ -76,17 +83,19 @@ public:
 	 * resulting hole with a composed odometry factor. */
 	virtual void RemoveNode( const IndexType& ind )
 	{
-		if( timeSeries.count( ind ) == 0 ) { return; }
+		if( _timeSeries.count( ind ) == 0 ) { return; }
 
-		const Datum& datum = timeSeries[ ind ];
-		slam->remove_node( datum.node.get() );
+		const Datum& datum = _timeSeries[ ind ];
+		_numPriors = _numPriors - datum.priors.size();
+		PoseGraph<P,IndexType>::_graph.RemoveNode( datum.node );
+		// NOTE Don't have to remove prior since remove_node will do it automatically?
 
 		typename TimeSeries::iterator prevIter;
-		bool hasLower = argus::get_closest_lesser( timeSeries, ind, prevIter );
+		bool hasLower = argus::get_closest_lesser( _timeSeries, ind, prevIter );
 		Datum& prev = prevIter->second;
 
 		typename TimeSeries::iterator nextIter;
-		bool hasUpper = argus::get_closest_greater( timeSeries, ind, nextIter );
+		bool hasUpper = argus::get_closest_greater( _timeSeries, ind, nextIter );
 		Datum& next = nextIter->second;
 
 		// Fill in hole in graph by joining odometry
@@ -100,7 +109,7 @@ public:
 			      sumOdom, sumCov );
 			next.toPrev = std::make_shared<EdgeType>
 			    ( prev.node.get(), next.node.get(), sumOdom, isam::Covariance( sumCov ) );
-			slam->add_factor( next.toPrev.get() );
+			PoseGraph<P,IndexType>::_graph.AddFactor( next.toPrev );
 		}
 		// Else just clear odometry factor pointing to node we removed
 		else if( hasUpper )
@@ -109,16 +118,17 @@ public:
 		}
 
 		// Don't erase until we're done using datum
-		timeSeries.erase( ind );
+		_timeSeries.erase( ind );
 	}
 	
 	virtual void ClearNodes()
 	{
-		BOOST_FOREACH( typename TimeSeries::value_type& iter, timeSeries )
+		BOOST_FOREACH( typename TimeSeries::value_type& iter, _timeSeries )
 		{
-			slam->remove_node( iter.second.node.get() );
+			PoseGraph<P,IndexType>::_graph.RemoveNode( iter.second.node );
 		}
-		timeSeries.clear();
+		_timeSeries.clear();
+		_numPriors = 0;
 	}
 
 	/*! \brief Creates a node and adds an edge to the previous node. Index must
@@ -126,42 +136,40 @@ public:
 	virtual void CreateEdge( const IndexType& from, const IndexType& to,
 	                         const PoseType& displacement, const NoiseType& noise )
 	{
-		IndexType first = std::min( from, to );
-		IndexType last = std::max( from, to );
-
-		typename NodeType::Ptr firstNode = RetrieveNode( first );
-		typename NodeType::Ptr lastNode = RetrieveNode( last );
+		typename NodeType::Ptr firstNode = RetrieveNode( from );
+		typename NodeType::Ptr lastNode = RetrieveNode( to );
 		if( !firstNode || !lastNode ) { return; }
 
-		Datum& lastDatum = timeSeries.at( last );
+		Datum& lastDatum = _timeSeries.at( to );
 		if( lastDatum.toPrev )
 		{
-			slam->remove_factor( lastDatum.toPrev.get() );
+			PoseGraph<P,IndexType>::_graph.RemoveFactor( lastDatum.toPrev );
 			lastDatum.toPrev.reset();
 		}
 
 		lastDatum.toPrev = std::make_shared <EdgeType>
 		    ( firstNode.get(), lastNode.get(), displacement, noise );
 		
-		slam->add_factor( lastDatum.toPrev.get() );
+		PoseGraph<P,IndexType>::_graph.AddFactor( lastDatum.toPrev );
 	}
 	
 	void CreatePrior( const IndexType& ind, const PoseType& pose,
 	                  const isam::Noise& noise )
 	{
 		if( !RetrieveNode( ind ) ) { return; }
-		Datum& datum = timeSeries[ ind ];
+		Datum& datum = _timeSeries[ ind ];
 		typename PriorType::Ptr prior = std::make_shared <PriorType>
 		    ( datum.node.get(), pose, noise );
 		datum.priors.push_back( prior );
-		slam->add_factor( prior.get() );
+		PoseGraph<P,IndexType>::_graph.AddFactor( prior );
+		++_numPriors;
 	}
 
 	/*! \brief Removes nodes that have only odometry factors. */
 	void CompressGraph()
 	{
 		std::vector<IndexType> toRemove;
-		BOOST_FOREACH( typename TimeSeries::value_type& iter, timeSeries )
+		BOOST_FOREACH( typename TimeSeries::value_type& iter, _timeSeries )
 		{
 			const IndexType& ind = iter.first;
 			const Datum& data = iter.second;
@@ -175,7 +183,7 @@ public:
 			if( data.toPrev ) { localFactors.insert( data.toPrev.get() ); }
 
 			typename TimeSeries::iterator nextIter;
-			if( argus::get_closest_greater( timeSeries, ind, nextIter ) )
+			if( argus::get_closest_greater( _timeSeries, ind, nextIter ) )
 			{
 				localFactors.insert( nextIter->toPrev.get() );
 			}
@@ -208,8 +216,8 @@ private:
 	{
 		typename TimeSeries::iterator prevIter, nextIter;
 		// Make sure index has previous and following items
-		if( !argus::get_closest_lesser( timeSeries, ind, prevIter ) || 
-		    !argus::get_closest_greater( timeSeries, ind, nextIter ) )
+		if( !argus::get_closest_lesser( _timeSeries, ind, prevIter ) || 
+		    !argus::get_closest_greater( _timeSeries, ind, nextIter ) )
 		{
 			return nullptr;
 		}
@@ -224,7 +232,13 @@ private:
 		
 		// Split odometry
 		typename EdgeType::Ptr odometry = nextIter->second.toPrev;
-		
+		if( !odometry ) 
+		{ 
+			// NOTE This should really not happen...
+			std::cerr << "NextIter doesn't have odometry!" << std::endl;
+			return nullptr; 
+		}
+
 		// Add newest timepoint
 		Datum midDatum;
 		midDatum.node = std::make_shared<NodeType>();
@@ -233,7 +247,7 @@ private:
 		      isam::Slam_Traits<P>::ScaleDisplacement( odometry->measurement(), prevProp ), 
 		      isam::SqrtInformation( prevProp * odometry->sqrtinf() ) );
 		
-		timeSeries[ ind ] = midDatum;
+		_timeSeries[ ind ] = midDatum;
 		
 		// Update last timepoint with split odometry
 		nextIter->second.toPrev = std::make_shared <EdgeType>
@@ -241,10 +255,10 @@ private:
 		      isam::Slam_Traits<P>::ScaleDisplacement( odometry->measurement(), nextProp ),
 		      isam::SqrtInformation( nextProp * odometry->sqrtinf() ) );
 
-		slam->remove_factor( odometry.get() );
-		slam->add_node( midDatum.node.get() );
-		slam->add_factor( midDatum.toPrev.get() );
-		slam->add_factor( nextIter->second.toPrev.get() );
+		PoseGraph<P,IndexType>::_graph.RemoveFactor( odometry );
+		PoseGraph<P,IndexType>::_graph.AddNode( midDatum.node );
+		PoseGraph<P,IndexType>::_graph.AddFactor( midDatum.toPrev );
+		PoseGraph<P,IndexType>::_graph.AddFactor( nextIter->second.toPrev );
 		return midDatum.node;
 	}
 	
@@ -256,9 +270,8 @@ private:
 	};
 	
 	typedef std::map <IndexType, Datum> TimeSeries;
-	TimeSeries timeSeries;	
-	isam::Slam::Ptr slam;
-	
+	TimeSeries _timeSeries;	
+	unsigned int _numPriors;
 };
 
 }

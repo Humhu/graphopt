@@ -72,8 +72,7 @@ int main( int argc, char** argv )
 	
 	TimeSeriesTest();
 	
-	isam::Slam::Ptr slam = std::make_shared <isam::Slam> ();
-	
+	GraphOptimizer slam;
 	OGraph ograph( slam );
 	
 	std::cout << "Initializing ograph..." << std::endl;
@@ -103,9 +102,9 @@ int main( int argc, char** argv )
 	
 	// Print results
 	std::cout << "Dumping results..." << std::endl;
-	slam->write( std::cout );
-	slam->batch_optimization();
-	slam->write( std::cout );
+	slam.GetOptimizer().write( std::cout );
+	slam.GetOptimizer().batch_optimization();
+	slam.GetOptimizer().write( std::cout );
 	
 	return 0;
 }

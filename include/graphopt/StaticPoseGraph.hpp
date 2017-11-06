@@ -5,6 +5,7 @@
 namespace argus
 {
 
+// A pose graph interface around a static pose instance
 template <class P, typename IndexType = boost::posix_time::ptime>
 class StaticPoseGraph
 : public PoseGraph<P,IndexType>
@@ -18,8 +19,8 @@ public:
 	typedef typename PoseGraph<P,IndexType>::NoiseType NoiseType;
 	typedef std::shared_ptr<StaticPoseGraph> Ptr;
 
-	StaticPoseGraph( isam::Slam::Ptr s ) 
-	: slam( s ) {}
+	StaticPoseGraph( GraphOptimizer& s ) 
+	: PoseGraph<P,IndexType>( s ) {}
 
 	virtual IndexType EarliestIndex() const
 	{
@@ -33,34 +34,35 @@ public:
 
 	virtual bool IsGrounded( const IndexType& ind ) const 
 	{
-		return node && priors.size() > 0;
+		return _priors.size() > 0;
 	}
 
 	virtual typename NodeType::Ptr CreateNode( const IndexType& ind,
 	                                           const PoseType& pose )
 	{
-		if( node ) { RemoveNode( IndexType() ); }
-		node = std::make_shared<NodeType>();
-		slam->add_node( node.get() );
-		node->init( pose );
-		return node;
+		if( _node ) 
+		{ 
+			_node->init( pose );
+			return _node; 
+		}
+
+		_node = std::make_shared<NodeType>();
+		PoseGraph<P,IndexType>::_graph.AddNode( _node );
+		_node->init( pose );
+		return _node;
 	}
 
 	virtual typename NodeType::Ptr RetrieveNode( const IndexType& ind )
 	{
-		if( !node ) 
-		{
-			CreateNode( ind, PoseType() );
-		}
-		return node;
+		return _node;
 	}
 
 	virtual void RemoveNode( const IndexType& ind )
 	{
-		if( !node ) { return; }
-		slam->remove_node( node.get() );
-		node.reset();
-		priors.clear();
+		if( !_node ) { return; }
+		PoseGraph<P,IndexType>::_graph.RemoveNode( _node );
+		_node.reset();
+		_priors.clear();
 	}
 
 	virtual void ClearNodes()
@@ -74,9 +76,9 @@ public:
 		typename NodeType::Ptr n = RetrieveNode( ind );
 		
 		typename PriorType::Ptr prior = std::make_shared <PriorType>
-		    ( node.get(), pose, noise );
-		slam->add_factor( prior.get() );
-		priors.push_back( prior );
+		    ( _node.get(), pose, noise );
+		PoseGraph<P,IndexType>::_graph.AddFactor( prior );
+		_priors.push_back( prior );
 	}
 
 	virtual void CreateEdge( const IndexType& from, const IndexType& to,
@@ -84,9 +86,8 @@ public:
 
 private:
 
-	isam::Slam::Ptr slam;
-	typename NodeType::Ptr node;
-	std::vector<typename PriorType::Ptr> priors;
+	typename NodeType::Ptr _node;
+	std::vector<typename PriorType::Ptr> _priors;
 
 };
 

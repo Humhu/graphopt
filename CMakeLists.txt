@@ -20,7 +20,7 @@ ExternalProject_Add(
 	isam_external
 	GIT_REPOSITORY https://github.com/Humhu/isam.git
 	BUILD_COMMAND cmake --build .
-	INSTALL_COMMAND make install
+	INSTALL_COMMAND make -j4 install
 	CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${CATKIN_DEVEL_PREFIX}
 )
 set( isam_INCLUDE_DIRS ${CATKIN_DEVEL_PREFIX}/include )
