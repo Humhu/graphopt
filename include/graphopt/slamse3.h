@@ -133,7 +133,7 @@ public:
 	
 	Eigen::VectorXd basic_error( Selector s = ESTIMATE ) const
 	{
-		PoseSE3::PoseType delta = _pose1->value(s).pose.Inverse() * _pose2->value(s).pose;
+		PoseSE3::PoseType delta = _measure.pose * _pose2->value(s).pose.Inverse() * _pose1->value(s).pose;
 		return PoseSE3::PoseType::Log( delta );
 	}
 	
