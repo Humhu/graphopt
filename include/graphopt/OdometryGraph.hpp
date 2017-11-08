@@ -25,8 +25,8 @@ public:
 	typedef typename PoseGraph<P,IndexType>::NoiseType NoiseType;
 	typedef std::shared_ptr<OdometryGraph> Ptr;
 	
-	OdometryGraph( GraphOptimizer& s )
-	: PoseGraph<P,IndexType>( s ), _numPriors( 0 ) {}
+	OdometryGraph( GraphOptimizer& s, bool optimize )
+	: PoseGraph<P,IndexType>( s, optimize ), _numPriors( 0 ) {}
 	
 	virtual IndexType EarliestIndex() const
 	{
@@ -38,12 +38,20 @@ public:
 		return argus::get_highest_key( _timeSeries );
 	}
 
+	// If the time is within the graph time extents, it can be
+	// automatically initialized
+	virtual bool IsInitialized( const IndexType& ind ) const
+	{
+		return InRange( ind );
+	}
+
 	// An odometry graph is grounded so long as it has at least one prior
 	virtual bool IsGrounded( const IndexType& ind ) const
 	{
 		return _numPriors > 0;
 	}
 
+	// Return whether a time is within the graph time extents
 	bool InRange( const IndexType& ind ) const
 	{
 		if( _timeSeries.size() == 0 ) { return false; }
@@ -66,7 +74,7 @@ public:
 		datum.toPrev = nullptr;
 		
 		_timeSeries[ ind ] = datum;
-		PoseGraph<P,IndexType>::_graph.AddNode( datum.node );
+		this->AddGraphNode( datum.node );
 		return datum.node;
 	}
 
@@ -87,7 +95,7 @@ public:
 
 		const Datum& datum = _timeSeries[ ind ];
 		_numPriors = _numPriors - datum.priors.size();
-		PoseGraph<P,IndexType>::_graph.RemoveNode( datum.node );
+		this->RemoveGraphNode( datum.node );
 		// NOTE Don't have to remove prior since remove_node will do it automatically?
 
 		typename TimeSeries::iterator prevIter;
@@ -109,7 +117,7 @@ public:
 			      sumOdom, sumCov );
 			next.toPrev = std::make_shared<EdgeType>
 			    ( prev.node.get(), next.node.get(), sumOdom, isam::Covariance( sumCov ) );
-			PoseGraph<P,IndexType>::_graph.AddFactor( next.toPrev );
+				this->AddGraphEdge( next.toPrev );
 		}
 		// Else just clear odometry factor pointing to node we removed
 		else if( hasUpper )
@@ -125,7 +133,7 @@ public:
 	{
 		BOOST_FOREACH( typename TimeSeries::value_type& iter, _timeSeries )
 		{
-			PoseGraph<P,IndexType>::_graph.RemoveNode( iter.second.node );
+			this->RemoveGraphNode( iter.second.node );
 		}
 		_timeSeries.clear();
 		_numPriors = 0;
@@ -143,14 +151,14 @@ public:
 		Datum& lastDatum = _timeSeries.at( to );
 		if( lastDatum.toPrev )
 		{
-			PoseGraph<P,IndexType>::_graph.RemoveFactor( lastDatum.toPrev );
+			this->RemoveGraphEdge( lastDatum.toPrev );
 			lastDatum.toPrev.reset();
 		}
 
 		lastDatum.toPrev = std::make_shared <EdgeType>
 		    ( firstNode.get(), lastNode.get(), displacement, noise );
 		
-		PoseGraph<P,IndexType>::_graph.AddFactor( lastDatum.toPrev );
+			this->AddGraphEdge( lastDatum.toPrev );
 	}
 	
 	void CreatePrior( const IndexType& ind, const PoseType& pose,
@@ -161,7 +169,7 @@ public:
 		typename PriorType::Ptr prior = std::make_shared <PriorType>
 		    ( datum.node.get(), pose, noise );
 		datum.priors.push_back( prior );
-		PoseGraph<P,IndexType>::_graph.AddFactor( prior );
+		this->AddGraphPrior( prior );
 		++_numPriors;
 	}
 
@@ -255,10 +263,10 @@ private:
 		      isam::Slam_Traits<P>::ScaleDisplacement( odometry->measurement(), nextProp ),
 		      isam::SqrtInformation( nextProp * odometry->sqrtinf() ) );
 
-		PoseGraph<P,IndexType>::_graph.RemoveFactor( odometry );
-		PoseGraph<P,IndexType>::_graph.AddNode( midDatum.node );
-		PoseGraph<P,IndexType>::_graph.AddFactor( midDatum.toPrev );
-		PoseGraph<P,IndexType>::_graph.AddFactor( nextIter->second.toPrev );
+		this->RemoveGraphEdge( odometry );
+		this->AddGraphNode( midDatum.node );
+		this->AddGraphEdge( midDatum.toPrev );
+		this->AddGraphEdge( nextIter->second.toPrev );
 		return midDatum.node;
 	}
 	

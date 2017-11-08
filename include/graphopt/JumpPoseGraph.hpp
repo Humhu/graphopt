@@ -17,8 +17,8 @@ public:
 	typedef typename PoseGraph<P, IndexType>::NoiseType NoiseType;
 	typedef std::shared_ptr<JumpPoseGraph> Ptr;
 
-	JumpPoseGraph( GraphOptimizer& s )
-		: PoseGraph<P, IndexType>( s ) {}
+	JumpPoseGraph( GraphOptimizer& s, bool optimize )
+		: PoseGraph<P, IndexType>( s, optimize ) {}
 
 	virtual IndexType EarliestIndex() const
 	{
@@ -30,6 +30,13 @@ public:
 		return argus::get_highest_key( _data );
 	}
 
+	// If a node exists in the graph, it must be initialized
+	virtual bool IsInitialized( const IndexType& ind ) const
+	{
+		return _data.count( ind ) != 0;
+	}
+
+	// Since there are no strong edge connections, just see if there are priors
 	virtual bool IsGrounded( const IndexType& ind ) const
 	{
 		if( _data.count( ind ) == 0 ) { return false; }
@@ -40,17 +47,17 @@ public:
 	                                           const PoseType& pose )
 	{
 		typename NodeType::Ptr node = RetrieveNode( ind );
-		if( node ) 
-		{ 
+		if( node )
+		{
 			node->init( pose );
-			return node; 
+			return node;
 		}
 
 		Datum datum;
 		datum.node = std::make_shared<NodeType>();
 		datum.node->init( pose );
 		_data[ind] = datum;
-		PoseGraph<P, IndexType>::_graph.AddNode( datum.node );
+		this->AddGraphNode( datum.node );
 		return datum.node;
 	}
 
@@ -64,7 +71,7 @@ public:
 	{
 		if( _data.count( ind ) > 0 )
 		{
-			PoseGraph<P, IndexType>::_graph.RemoveNode( _data[ind].node );
+			this->RemoveGraphNode( _data[ind].node );
 			_data.erase( ind );
 		}
 	}
@@ -86,7 +93,7 @@ public:
 		Datum& d = _data.at( ind );
 		typename PriorType::Ptr prior = std::make_shared<PriorType>
 		                                    ( d.node.get(), pose, noise );
-		PoseGraph<P, IndexType>::_graph.AddFactor( prior );
+		this->AddGraphPrior( prior );
 		d.priors.push_back( prior );
 	}
 

@@ -4,23 +4,22 @@
 
 namespace argus
 {
-
 // A pose graph interface around a static pose instance
 template <class P, typename IndexType = boost::posix_time::ptime>
 class StaticPoseGraph
-: public PoseGraph<P,IndexType>
+	: public PoseGraph<P, IndexType>
 {
 public:
 
-	typedef typename PoseGraph<P,IndexType>::PoseType PoseType;
-	typedef typename PoseGraph<P,IndexType>::NodeType NodeType;
-	typedef typename PoseGraph<P,IndexType>::PriorType PriorType;
-	typedef typename PoseGraph<P,IndexType>::EdgeType EdgeType;
-	typedef typename PoseGraph<P,IndexType>::NoiseType NoiseType;
+	typedef typename PoseGraph<P, IndexType>::PoseType PoseType;
+	typedef typename PoseGraph<P, IndexType>::NodeType NodeType;
+	typedef typename PoseGraph<P, IndexType>::PriorType PriorType;
+	typedef typename PoseGraph<P, IndexType>::EdgeType EdgeType;
+	typedef typename PoseGraph<P, IndexType>::NoiseType NoiseType;
 	typedef std::shared_ptr<StaticPoseGraph> Ptr;
 
-	StaticPoseGraph( GraphOptimizer& s ) 
-	: PoseGraph<P,IndexType>( s ) {}
+	StaticPoseGraph( GraphOptimizer& s, bool optimize )
+		: PoseGraph<P, IndexType>( s, optimize ) {}
 
 	virtual IndexType EarliestIndex() const
 	{
@@ -32,7 +31,12 @@ public:
 		return IndexTraits<IndexType>::Latest();
 	}
 
-	virtual bool IsGrounded( const IndexType& ind ) const 
+	virtual bool IsInitialized( const IndexType& ind ) const
+	{
+		return bool(_node);
+	}
+
+	virtual bool IsGrounded( const IndexType& ind ) const
 	{
 		return _priors.size() > 0;
 	}
@@ -40,14 +44,14 @@ public:
 	virtual typename NodeType::Ptr CreateNode( const IndexType& ind,
 	                                           const PoseType& pose )
 	{
-		if( _node ) 
-		{ 
+		if( _node )
+		{
 			_node->init( pose );
-			return _node; 
+			return _node;
 		}
 
 		_node = std::make_shared<NodeType>();
-		PoseGraph<P,IndexType>::_graph.AddNode( _node );
+		this->AddGraphNode( _node );
 		_node->init( pose );
 		return _node;
 	}
@@ -60,7 +64,7 @@ public:
 	virtual void RemoveNode( const IndexType& ind )
 	{
 		if( !_node ) { return; }
-		PoseGraph<P,IndexType>::_graph.RemoveNode( _node );
+		this->RemoveGraphNode( _node );
 		_node.reset();
 		_priors.clear();
 	}
@@ -71,13 +75,13 @@ public:
 	}
 
 	virtual void CreatePrior( const IndexType& ind, const PoseType& pose,
-	                                   const isam::Noise& noise )
+	                          const isam::Noise& noise )
 	{
 		typename NodeType::Ptr n = RetrieveNode( ind );
-		
-		typename PriorType::Ptr prior = std::make_shared <PriorType>
-		    ( _node.get(), pose, noise );
-		PoseGraph<P,IndexType>::_graph.AddFactor( prior );
+
+		typename PriorType::Ptr prior = std::make_shared<PriorType>
+		                                    ( _node.get(), pose, noise );
+		this->AddGraphPrior( prior );
 		_priors.push_back( prior );
 	}
 
@@ -88,7 +92,5 @@ private:
 
 	typename NodeType::Ptr _node;
 	std::vector<typename PriorType::Ptr> _priors;
-
 };
-
 }

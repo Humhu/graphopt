@@ -7,41 +7,40 @@
 
 namespace argus
 {
-
 /*! \brief Defines basic properties and operators for time indices. */
 template <typename IndexType>
 struct IndexTraits
 {
-	static double Difference( const IndexType& a, const IndexType& b ) 
-	{ 
-		return (double)( a - b ); 
+	static double Difference( const IndexType& a, const IndexType& b )
+	{
+		return (double) ( a - b );
 	}
-	
+
 	/*! \brief Returns the earliest representable time. */
-	static IndexType Earliest() 
-	{ 
-		return std::numeric_limits<IndexType>::min(); 
+	static IndexType Earliest()
+	{
+		return std::numeric_limits<IndexType>::min();
 	}
-	
+
 	/*!\brief Returns the latest representable time. */
-	static IndexType Latest() 
-	{ 
-		return std::numeric_limits<IndexType>::max(); 
+	static IndexType Latest()
+	{
+		return std::numeric_limits<IndexType>::max();
 	}
 };
 
 template <>
-struct IndexTraits <boost::posix_time::ptime>
+struct IndexTraits<boost::posix_time::ptime>
 {
 	typedef boost::posix_time::ptime Time;
-	
+
 	static double Difference( const Time& a, const Time& b )
 	{
 		// TODO Set precision
 		return (a - b).total_microseconds() * 1E-6;
 	}
 
-	static Time Earliest() 
+	static Time Earliest()
 	{
 		return Time( boost::posix_time::min_date_time );
 	}
@@ -53,9 +52,8 @@ struct IndexTraits <boost::posix_time::ptime>
 };
 
 template <>
-struct IndexTraits <ros::Time>
+struct IndexTraits<ros::Time>
 {
-
 	static double Difference( const ros::Time& a, const ros::Time& b )
 	{
 		return (a - b).toSec();
@@ -86,8 +84,8 @@ public:
 	typedef isam::Noise NoiseType;
 	typedef std::shared_ptr<PoseGraph> Ptr;
 
-	PoseGraph( GraphOptimizer& graph ) 
-	: _graph( graph ) {}
+	PoseGraph( GraphOptimizer& graph, bool optimize = true )
+		: _graph( graph ), _optimize( optimize ) {}
 
 	virtual ~PoseGraph() {}
 
@@ -97,13 +95,19 @@ public:
 	/*! \brief Return the latest index in the pose graph. */
 	virtual IndexType LatestIndex() const = 0;
 
-	/*! \brief Return whether the (hypothetical) node at the time index is grounded.
+	/*! \brief Return whether the (hypothetical) node at the time index is
+	 * initialized. For a stronger check, see IsGrounded().
+	 */
+	virtual bool IsInitialized( const IndexType& ind ) const = 0;
+
+	/*! \brief Return whether the (hypothetical) node at the time index is grounded
+	 * with a prior or strong edge connections in the pose graph.
 	 * If not and the node will be optimized, a prior should be added. */
 	virtual bool IsGrounded( const IndexType& ind ) const = 0;
 
 	/*! \brief Retrieves the node corresponding to the specified index if it exists,
-	else creates a node at the specified index. */
-	virtual typename NodeType::Ptr CreateNode( const IndexType& ind, 
+	   else creates a node at the specified index. */
+	virtual typename NodeType::Ptr CreateNode( const IndexType& ind,
 	                                           const PoseType& pose ) = 0;
 
 	/*! \brief Retrieve the node corresponding to the specified index, creating
@@ -121,12 +125,42 @@ public:
 	                          const NoiseType& noise ) = 0;
 
 	virtual void CreateEdge( const IndexType& from, const IndexType& to,
-							 const PoseType& pose, const NoiseType& noise ) = 0;
-							 
+	                         const PoseType& pose, const NoiseType& noise ) = 0;
+
 protected:
 
 	GraphOptimizer& _graph;
+	bool _optimize;
+
+	void AddGraphNode( const typename NodeType::Ptr& node )
+	{
+		if( _optimize ) { _graph.AddNode( node ); }
+	}
+
+	void AddGraphPrior( const typename PriorType::Ptr& prior )
+	{
+		if( _optimize ) { _graph.AddFactor( prior ); }
+	}
+
+	void AddGraphEdge( const typename EdgeType::Ptr& edge )
+	{
+		if( _optimize ) { _graph.AddFactor( edge ); }
+	}
+
+	void RemoveGraphNode( const typename NodeType::Ptr& node )
+	{
+		if( _optimize ) { _graph.RemoveNode( node ); }
+	}
+
+	void RemoveGraphPrior( const typename PriorType::Ptr& prior )
+	{
+		if( _optimize ) { _graph.RemoveFactor( prior ); }
+	}
+
+	void RemoveGraphEdge( const typename EdgeType::Ptr& edge )
+	{
+		if( _optimize ) { _graph.RemoveFactor( edge ); }
+	}
 
 };
-
 }
