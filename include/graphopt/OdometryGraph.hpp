@@ -25,7 +25,7 @@ public:
 	typedef typename PoseGraph<P,IndexType>::NoiseType NoiseType;
 	typedef std::shared_ptr<OdometryGraph> Ptr;
 	
-	OdometryGraph( GraphOptimizer& s, bool optimize )
+	OdometryGraph( GraphOptimizer& s, bool optimize = true  )
 	: PoseGraph<P,IndexType>( s, optimize ), _numPriors( 0 ) {}
 	
 	virtual IndexType EarliestIndex() const

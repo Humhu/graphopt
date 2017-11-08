@@ -17,7 +17,7 @@ public:
 	typedef typename PoseGraph<P, IndexType>::NoiseType NoiseType;
 	typedef std::shared_ptr<JumpPoseGraph> Ptr;
 
-	JumpPoseGraph( GraphOptimizer& s, bool optimize )
+	JumpPoseGraph( GraphOptimizer& s, bool optimize = true )
 		: PoseGraph<P, IndexType>( s, optimize ) {}
 
 	virtual IndexType EarliestIndex() const
