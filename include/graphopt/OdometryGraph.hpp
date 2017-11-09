@@ -229,7 +229,6 @@ private:
 		{
 			return nullptr;
 		}
-		
 		IndexType prevTime = prevIter->first;
 		IndexType nextTime = nextIter->first;
 		
@@ -249,14 +248,16 @@ private:
 
 		// Add newest timepoint
 		Datum midDatum;
+		P scaledDisp = isam::Slam_Traits<P>::ScaleDisplacement( odometry->measurement(), prevProp );
 		midDatum.node = std::make_shared<NodeType>();
+		//midDatum.node->init( midPose );
 		midDatum.toPrev = std::make_shared <EdgeType>
 		    ( prevIter->second.node.get(), midDatum.node.get(),
-		      isam::Slam_Traits<P>::ScaleDisplacement( odometry->measurement(), prevProp ), 
+		      scaledDisp, 
 		      isam::SqrtInformation( prevProp * odometry->sqrtinf() ) );
-		
+		midDatum.toPrev->initialize();
 		_timeSeries[ ind ] = midDatum;
-		
+
 		// Update last timepoint with split odometry
 		nextIter->second.toPrev = std::make_shared <EdgeType>
 		    ( midDatum.node.get(), nextIter->second.node.get(), 
